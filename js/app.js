@@ -41,7 +41,7 @@ const ic = n => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${IC[n] |
 /* ===================== JARINGAN: fetch REST + cache SWR + retry + idempotensi ===================== */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const newReqId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
-const WRITE = { bookingSave: 1, bookingStatus: 1, payAdd: 1, payDel: 1, bookingDel: 1, tripSave: 1, premiPay: 1, mSave: 1, mDel: 1, uSave: 1, uReset: 1, cfgSave: 1 };
+const WRITE = { bookingSave: 1, bookingStatus: 1, payAdd: 1, payDel: 1, bookingDel: 1, tripSave: 1, premiPay: 1, kruViewSave: 1, mSave: 1, mDel: 1, uSave: 1, uReset: 1, cfgSave: 1 };
 const SWR = { boot: 1, dash: 1, bookingList: 1, calendar: 1, premiList: 1, tagihan: 1, laporan: 1, mList: 1, uList: 1, kruTrips: 1, kruPremi: 1 };
 const SILENT_OK = { home: 1, booking: 1, kalender: 1, premi: 1, tagihan: 1, master: 1, laporan: 1, akun: 1, kjadwal: 1, kpremi: 1 };
 const TTL = 60000, MEMC = {}, BG = {};
@@ -49,10 +49,10 @@ const cfgOk = () => typeof GAS_URL === 'string' && /^https:\/\/script\.google\.c
 const Perf = { log: [], rec(a, total, server) { const n = server != null ? total - server : null; this.log.push({ aksi: a, total: Math.round(total), server: server, jaringan: n == null ? null : Math.round(n) }); if (this.log.length > 50) this.log.shift(); if (total > 3000) console.warn('[Perf] lambat:', a, Math.round(total) + ' ms, server ' + server + ' ms'); } };
 
 function busy(d) { S.busy += d; $('#progress').classList.toggle('on', S.busy > 0); }
-const ckey = (a, p) => 'sb:v1:' + (S.user ? S.user.uid : '-') + ':' + a + ':' + JSON.stringify(p || {});
+const ckey = (a, p) => 'sb:v2:' + (S.user ? S.user.uid : '-') + ':' + a + ':' + JSON.stringify(p || {});
 function cget(k) { if (MEMC[k]) return MEMC[k]; try { const v = localStorage.getItem(k); if (v) return (MEMC[k] = JSON.parse(v)); } catch (e) { } return null; }
 function cput(k, d) { const o = { t: Date.now(), d: d }; MEMC[k] = o; try { const j = JSON.stringify(o); if (j.length < 400000) localStorage.setItem(k, j); } catch (e) { } }
-function cclear() { Object.keys(MEMC).forEach(k => delete MEMC[k]); try { Object.keys(localStorage).filter(k => k.indexOf('sb:v1:') === 0).forEach(k => localStorage.removeItem(k)); } catch (e) { } }
+function cclear() { Object.keys(MEMC).forEach(k => delete MEMC[k]); try { Object.keys(localStorage).filter(k => k.indexOf('sb:v2:') === 0).forEach(k => localStorage.removeItem(k)); } catch (e) { } }
 
 /** Satu pintu ke backend. Baca: timeout 25 dtk, retry 3x. Tulis: timeout 90 dtk, retry dengan reqId yang sama (idempoten). */
 async function net(action, p, o) {
@@ -135,9 +135,16 @@ function fld(id, label, type, val, o) {
 }
 const val = id => { const e = document.getElementById(id); return e ? e.value : ''; };
 const JENIS = ['Big Bus', 'Medium Bus', 'Mini Bus', 'Elf'];
-const optArm = () => (S.m.armada || []).filter(a => a.status !== 'Nonaktif').map(a => [a.id, `${a.plat} · ${a.jenis} · ${a.seat} seat${a.status === 'Servis' ? ' (Servis)' : ''}`]);
+const batIds = a => String((a && a.kru_batangan) || '').split(',').filter(Boolean);
+const batNames = a => batIds(a).map(id => (S.m.kru.find(k => k.id === id) || {}).nama).filter(Boolean).join(', ');
+const optArm = () => (S.m.armada || []).filter(a => a.status !== 'Nonaktif').map(a => [a.id, `${a.plat} · ${a.jenis} · ${a.seat} seat${batIds(a).length ? ' · Batangan: ' + batNames(a) : ''}${a.status === 'Servis' ? ' (Servis)' : ''}`]);
+function kruMulti(id, label, cur, selfId) {
+  const sel = {}, used = {}; batIds({ kru_batangan: cur }).forEach(x => sel[x] = 1);
+  (S.m.armada || []).forEach(a => { if (a.id !== selfId) batIds(a).forEach(k => used[k] = a.plat); });
+  return `<div class="f"><label>${esc(label)}</label><div class="card" style="padding:6px 10px;max-height:230px;overflow:auto;margin:0">${S.m.kru.filter(k => k.status === 'Aktif' || sel[k.id]).map(k => `<label class="row" style="min-height:44px;font-weight:400;gap:10px;flex-wrap:nowrap"><input type="checkbox" class="kb" value="${k.id}"${sel[k.id] ? ' checked' : ''}${used[k.id] ? ' disabled' : ''}><span>${esc(k.nama)} <small class="muted">${k.posisi}${used[k.id] ? ' · batangan ' + esc(used[k.id]) : ''}</small></span></label>`).join('') || '<div class="muted sm">Belum ada kru.</div>'}</div><small class="muted">Sopir dan kernet tetap bus ini. Otomatis terisi saat booking baru. Satu kru hanya untuk satu bus.</small></div>`;
+}
 const FORMS = {
-  Armada: { t: 'Armada', f: [['plat', 'Plat nomor', 'text', 1], ['jenis', 'Jenis bus', 'select', 1, JENIS], ['seat', 'Jumlah seat', 'number', 1], ['tahun', 'Tahun', 'number'], ['status', 'Status', 'select', 1, ['Aktif', 'Servis', 'Nonaktif']], ['tgl_servis', 'Jadwal servis berikutnya', 'date'], ['tgl_kir', 'KIR berlaku sampai', 'date'], ['tgl_pajak', 'Pajak jatuh tempo', 'date']] },
+  Armada: { t: 'Armada', f: [['plat', 'Plat nomor', 'text', 1], ['jenis', 'Jenis bus', 'select', 1, JENIS], ['seat', 'Jumlah seat', 'number', 1], ['tahun', 'Tahun', 'number'], ['status', 'Status', 'select', 1, ['Aktif', 'Servis', 'Nonaktif']], ['tgl_servis', 'Jadwal servis berikutnya', 'date'], ['tgl_kir', 'KIR berlaku sampai', 'date'], ['tgl_pajak', 'Pajak jatuh tempo', 'date'], ['kru_batangan', 'Kru batangan (opsional)', 'krumulti']] },
   Kru: { t: 'Kru', f: [['nama', 'Nama', 'text', 1], ['posisi', 'Posisi', 'select', 1, ['Sopir', 'Kernet']], ['no_hp', 'No. HP', 'tel'], ['no_sim', 'No. SIM', 'text'], ['tgl_sim', 'SIM berlaku sampai', 'date'], ['status', 'Status', 'select', 1, ['Aktif', 'Nonaktif']]] },
   Pelanggan: { t: 'Pelanggan', f: [['nama', 'Nama', 'text', 1], ['instansi', 'Instansi / grup', 'text'], ['no_hp', 'No. HP', 'tel'], ['alamat', 'Alamat', 'textarea']] },
   Tarif: { t: 'Tarif', f: [['rute', 'Rute', 'text', 1], ['jenis_bus', 'Jenis bus', 'select', 1, JENIS], ['harga', 'Harga sewa (Rp)', 'number', 1]] },
@@ -151,13 +158,13 @@ function openForm(table, id, done) {
   const F = FORMS[table], rec = id ? ((S.m[BOOTKEY[table]] || S.list || []).find(r => r.id === id) || {}) : {};
   if (!id && table === 'Armada') { rec.status = 'Aktif'; } if (!id && table === 'Kru') rec.status = 'Aktif'; if (!id && table === 'KomponenPremi') rec.status = 'Aktif'; if (!id && table === 'BiayaArmada') rec.tanggal = todayStr();
   S.done = done || null;
-  const h = F.f.map(x => fld('f_' + x[0], x[1], x[2] === 'armada' ? 'select' : x[2], rec[x[0]] == null ? '' : rec[x[0]], { req: x[3], opts: x[2] === 'armada' ? optArm() : x[4] })).join('') +
+  const h = F.f.map(x => x[2] === 'krumulti' ? kruMulti('f_' + x[0], x[1], rec[x[0]], id) : fld('f_' + x[0], x[1], x[2] === 'armada' ? 'select' : x[2], rec[x[0]] == null ? '' : rec[x[0]], { req: x[3], opts: x[2] === 'armada' ? optArm() : x[4] })).join('') +
     `<div class="row"><button class="btn primary grow" onclick="saveForm('${table}','${id || ''}',this)">Simpan</button>${id && isSA() ? `<button class="btn danger" onclick="delRec('${table}','${id}',this)">${ic('trash')} Hapus</button>` : ''}</div>`;
   sheet((id ? 'Ubah ' : 'Tambah ') + F.t, h);
 }
 function saveForm(table, id, btn) {
   const F = FORMS[table], rec = { id: id || '' }; let bad = false;
-  F.f.forEach(x => { const v = val('f_' + x[0]); rec[x[0]] = v; const e = $('#f_' + x[0] + '_e'); if (e) e.textContent = ''; if (x[3] && (v === '' || v == null)) { if (e) e.textContent = 'Wajib diisi'; bad = true; } });
+  F.f.forEach(x => { if (x[2] === 'krumulti') { rec[x[0]] = $$('.kb:checked').map(c => c.value).join(','); return; } const v = val('f_' + x[0]); rec[x[0]] = v; const e = $('#f_' + x[0] + '_e'); if (e) e.textContent = ''; if (x[3] && (v === '' || v == null)) { if (e) e.textContent = 'Wajib diisi'; bad = true; } });
   if (bad) return;
   act(btn, async () => {
     const saved = await call('mSave', { table: table, rec: rec });
@@ -298,6 +305,15 @@ function newPel() {
     const e = $('#bf_pel'); e.innerHTML = '<option value="">— pilih —</option>' + S.m.pelanggan.map(x => `<option value="${x.id}">${esc(x.nama)}</option>`).join(''); e.value = r.id;
   });
 }
+function onArm() { autoHarga(); if (!S.params.id) fillBatangan(true); }
+/** Isi kru dari kru batangan bus terpilih. auto=true: hanya bila belum ada kru yang dipilih manual. */
+function fillBatangan(auto) {
+  const a = S.m.armada.find(x => x.id === val('bf_arm')); if (!a) { if (!auto) toast('Pilih armada dulu.', true); return; }
+  const ids = batIds(a); if (!ids.length) { if (!auto) toast('Bus ini belum punya kru batangan.', true); return; }
+  syncFk(); if (auto && S.fk.some(k => k.kru_id)) return;
+  S.fk = ids.map(id => { const k = S.m.kru.find(x => x.id === id); return k && k.status === 'Aktif' ? { kru_id: id, posisi: k.posisi, persen_premi: N(S.cfg[k.posisi === 'Sopir' ? 'PERSEN_SOPIR' : 'PERSEN_KERNET']) } : null; }).filter(Boolean);
+  renderFk(); toast('Kru batangan ' + a.plat + ' diisi');
+}
 function autoHarga() {
   const a = S.m.armada.find(x => x.id === val('bf_arm')), r = val('bf_rute').trim().toLowerCase();
   if (!a || !r || N(val('bf_harga'))) return;
@@ -333,13 +349,13 @@ PAGES.bform = async p => {
     <datalist id="dl_rute">${S.m.tarif.map(t => `<option value="${esc(t.rute)}">`).join('')}</datalist>
     ${fld('bf_rute', 'Rute / tujuan', 'text', b.rute || '', { req: 1, list: 'dl_rute', on: 'autoHarga()' })}${fld('bf_jemput', 'Titik jemput', 'text', b.titik_jemput || '')}${fld('bf_jam', 'Jam jemput', 'time', b.jam_jemput || '')}
     <div class="grid2">${fld('bf_a', 'Berangkat', 'date', b.tgl_berangkat, { req: 1 })}${fld('bf_z', 'Pulang', 'date', b.tgl_pulang, { req: 1 })}</div></div>
-    <div class="card"><h3>Armada & kru</h3>${fld('bf_arm', 'Armada', 'select', b.armada_id, { req: 1, opts: [['', '— pilih —']].concat(optArm()), on: 'autoHarga()' })}${fld('bf_pax', 'Jumlah penumpang', 'number', b.jml_penumpang || '', { req: 1 })}
+    <div class="card"><h3>Armada & kru</h3>${fld('bf_arm', 'Armada', 'select', b.armada_id, { req: 1, opts: [['', '— pilih —']].concat(optArm()), on: 'onArm()' })}${fld('bf_pax', 'Jumlah penumpang', 'number', b.jml_penumpang || '', { req: 1 })}
     <div class="sec" style="margin-top:0">Kru (bisa lebih dari satu)</div><div id="fkRows"></div>
-    <div class="row"><button class="btn sm" type="button" onclick="addFk('Sopir')">${ic('plus')} Sopir</button><button class="btn sm" type="button" onclick="addFk('Kernet')">${ic('plus')} Kernet</button><button class="btn sm grow" type="button" onclick="checkConf(this)">Cek bentrok</button></div><div id="cres" style="margin-top:10px" role="status"></div></div>
+    <div class="row"><button class="btn sm" type="button" onclick="addFk('Sopir')">${ic('plus')} Sopir</button><button class="btn sm" type="button" onclick="addFk('Kernet')">${ic('plus')} Kernet</button><button class="btn sm" type="button" onclick="fillBatangan(false)">Kru batangan</button><button class="btn sm grow" type="button" onclick="checkConf(this)">Cek bentrok</button></div><div id="cres" style="margin-top:10px" role="status"></div></div>
     <div class="card"><h3>Harga & status</h3>${fld('bf_harga', 'Harga sewa (Rp)', 'number', b.harga || '', { req: 1 })}${fld('bf_st', 'Status', 'select', b.status, { opts: ['Pending', 'Terkonfirmasi', 'Berjalan', 'Selesai', 'Batal'] })}${fld('bf_cat', 'Catatan', 'textarea', b.catatan || '')}</div>
     <div class="err-box" id="bferr" role="alert" hidden></div>
     <div class="sticky-act"><button class="btn primary lg grow" onclick="saveBooking(this)">Simpan booking</button></div>`,
-    mount: renderFk
+    mount: () => { renderFk(); if (!p.id && b.armada_id) fillBatangan(true); }
   };
 };
 
@@ -423,16 +439,16 @@ function premiViewHtml(d) {
   return d.premi.length ? `<div class="sec">Premi tersimpan</div>` + d.premi.map(p => `<div class="card"><div class="row sp"><b>${esc(p.nama)}</b><span class="badge ${p.status === 'Sudah dibayar' ? 'b-ok' : 'b-warn'}">${esc(p.status)}</span></div><div class="kv"><span>Premi ${p.persen}% dari ${rp(p.dasar_premi)}</span><span class="num">${rp(p.premi)}</span></div>${p.det.filter(x => N(x.jumlah)).map(x => `<div class="kv"><span>${esc(x.nama)}</span><span class="num">${rp(x.jumlah)}</span></div>`).join('')}<div class="kv"><span class="b">Total pendapatan</span><span class="num b">${rp(p.total_pendapatan)}</span></div></div>`).join('') : '';
 }
 /* --- Cetak --- */
-async function showDoc(type, bid, kid) {
+async function showDoc(type, bid, kid, month) {
   await act(null, async () => {
-    const d = await call('doc', { type: type, booking_id: bid, kru_id: kid || '' }); S.doc = { d: d, type: type, bid: bid, kid: kid || '' };
+    const d = await call('doc', { type: type, booking_id: bid, kru_id: kid || '', month: month || '' }); S.doc = { d: d, type: type, bid: bid, kid: kid || '', month: month || '' };
     sheet(d.title, `<div class="docwrap"><style>${d.css}</style>${d.body}</div><div class="row"><button class="btn primary grow" onclick="printDoc()">${ic('print')} Cetak</button><button class="btn grow" onclick="pdfDoc(this)">${ic('dl')} Unduh PDF</button></div>`);
   });
 }
 function printDoc() { $('#printRoot').innerHTML = `<style>${S.doc.d.css}</style>` + S.doc.d.body; window.print(); }
 function pdfDoc(btn) {
   act(btn, async () => {
-    const r = await call('pdf', { type: S.doc.type, booking_id: S.doc.bid, kru_id: S.doc.kid }), bin = atob(r.b64), u = new Uint8Array(bin.length);
+    const r = await call('pdf', { type: S.doc.type, booking_id: S.doc.bid, kru_id: S.doc.kid, month: S.doc.month }), bin = atob(r.b64), u = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([u], { type: 'application/pdf' })); a.download = r.name; document.body.appendChild(a); a.click(); a.remove(); toast('PDF diunduh');
   });
@@ -452,7 +468,7 @@ PAGES.bdetail = async p => {
   else if (tab === 'trip') body = tripHtml(d) + premiViewHtml(d);
   else body = `<button class="item" onclick="showDoc('invoice','${b.id}')">${ic('rcpt')}<div class="grow"><div class="t">Invoice / bukti booking</div><div class="s">Preview, cetak, atau unduh PDF</div></div>${ic('chev')}</button>
     <button class="item" onclick="showDoc('surat','${b.id}')">${ic('file')}<div class="grow"><div class="t">Surat jalan</div><div class="s">Untuk sopir dan kernet</div></div>${ic('chev')}</button>` +
-    (d.premi.length ? `<div class="sec">Slip premi kru</div>` + d.premi.map(x => `<button class="item" onclick="showDoc('slip','${b.id}','${x.kru_id}')">${ic('wallet')}<div class="grow"><div class="t">${esc(x.nama)}</div><div class="s">${rp(x.total_pendapatan)} · ${esc(x.status)}</div></div>${ic('chev')}</button>`).join('') : '<div class="muted sm" style="margin:8px 2px">Slip premi tersedia setelah premi dihitung di tab Trip & Premi.</div>');
+    (d.premi.length ? `<div class="sec">Slip premi kru</div>` + d.premi.map(x => `<button class="item" onclick="showDoc('slip','${b.id}','${x.kru_id}')">${ic('wallet')}<div class="grow"><div class="t">${esc(x.nama)}</div><div class="s">Rincian perhitungan · ${rp(x.total_pendapatan)} · ${esc(x.status)}</div></div>${ic('chev')}</button>`).join('') : '<div class="muted sm" style="margin:8px 2px">Slip premi tersedia setelah premi dihitung di tab Trip & Premi.</div>');
   return { html: `<div class="seg" role="tablist">${tabs.map(t => `<button role="tab" class="${tab === t[0] ? 'on' : ''}" onclick="setP({tab:'${t[0]}'})">${t[1]}</button>`).join('')}</div>${body}`, mount: tab === 'trip' ? () => { renderBiaya(); renderTripKru(); tripCalc(); } : null };
 };
 function delBooking(id) { if (confirm('Hapus booking ini? (bisa dipulihkan Super Admin)')) act(null, async () => { await call('bookingDel', { id: id }); toast('Dihapus'); S.bl = []; goBack(); }); }
@@ -481,12 +497,23 @@ PAGES.premi = async p => {
   rows.forEach(r => (g[r.kru_id] = g[r.kru_id] || { nama: r.kru, posisi: r.posisi, l: [] }).l.push(r));
   const ks = Object.keys(g).sort((a, b) => g[a].nama < g[b].nama ? -1 : 1), tot = rows.reduce((a, r) => a + r.total, 0), paid = rows.filter(r => r.status === 'Sudah dibayar').reduce((a, r) => a + r.total, 0);
   return {
-    html: `<div class="grid2">${fld('pm_m', 'Periode', 'month', ym, { on: "setP({ym:this.value})" })}<div class="kpi" style="margin-bottom:12px"><small>Belum dibayar</small><b class="num ${tot - paid ? 'neg' : ''}">${rp(tot - paid)}</b></div></div>
+    html: `<div class="card row sp" style="flex-wrap:nowrap"><div style="min-width:0"><b>Harga sewa tampil ke kru</b><div class="xs muted" id="hgDesc">${S.cfg.TAMPIL_HARGA_KRU === '1' ? 'Kru melihat harga sewa di jadwal dan rincian premi.' : 'Harga sewa disembunyikan dari kru.'}</div></div><button class="sw" id="hgSw" role="switch" aria-label="Tampilkan harga sewa ke kru" aria-checked="${S.cfg.TAMPIL_HARGA_KRU === '1'}" onclick="toggleHarga(this)"><i></i></button></div>
+    <div class="grid2">${fld('pm_m', 'Periode', 'month', ym, { on: "setP({ym:this.value})" })}<div class="kpi" style="margin-bottom:12px"><small>Belum dibayar</small><b class="num ${tot - paid ? 'neg' : ''}">${rp(tot - paid)}</b></div></div>
     <div class="grid2" style="margin-bottom:12px">${kpi('Total premi', rp(tot))}${kpi('Sudah dibayar', rp(paid))}</div>
-    ${ks.map(k => { const x = g[k], t = x.l.reduce((a, r) => a + r.total, 0), pd = x.l.filter(r => r.status === 'Sudah dibayar').reduce((a, r) => a + r.total, 0); return `<details class="card"><summary style="cursor:pointer;min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:8px"><span><b>${esc(x.nama)}</b> <small class="muted">${x.posisi} · ${x.l.length} trip</small></span><span class="num b">${rp(t)}</span></summary><div class="xs muted" style="margin-bottom:6px">Dibayar ${rp(pd)} · Belum ${rp(t - pd)}</div>${x.l.map(r => `<div class="row" style="padding:8px 0;border-top:1px dashed var(--border);flex-wrap:nowrap">${r.status === 'Sudah dibayar' ? `<span class="badge b-ok">Lunas</span>` : `<input type="checkbox" class="pk" value="${r.id}" aria-label="Pilih ${esc(r.no)}">`}<div class="grow" style="min-width:0"><div class="sm b">${esc(r.rute)}</div><div class="xs muted">${esc(r.no)} · ${fd(r.tgl)}${r.tgl_bayar ? ' · bayar ' + fd(r.tgl_bayar) : ''}</div></div><div class="num sm b">${rp(r.total)}</div><button class="ib" aria-label="Slip premi" onclick="showDoc('slip','${r.booking_id}','${k}')">${ic('print')}</button></div>`).join('')}</details>`; }).join('') || '<div class="empty">Belum ada premi pada periode ini.<br><small>Premi muncul setelah booking Selesai dan trip & premi dihitung.</small></div>'}
+    ${ks.map(k => { const x = g[k], t = x.l.reduce((a, r) => a + r.total, 0), pd = x.l.filter(r => r.status === 'Sudah dibayar').reduce((a, r) => a + r.total, 0); return `<details class="card"><summary style="cursor:pointer;min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:8px"><span><b>${esc(x.nama)}</b> <small class="muted">${x.posisi} · ${x.l.length} trip</small></span><span class="num b">${rp(t)}</span></summary><div class="xs muted" style="margin-bottom:6px">Dibayar ${rp(pd)} · Belum ${rp(t - pd)}</div><button class="btn sm block" style="margin-bottom:6px" onclick="showDoc('rekap','','${k}','${ym}')">${ic('print')} Cetak rekap premi ${esc(x.nama)}</button>${x.l.map(r => `<div class="row" style="padding:8px 0;border-top:1px dashed var(--border);flex-wrap:nowrap">${r.status === 'Sudah dibayar' ? `<span class="badge b-ok">Lunas</span>` : `<input type="checkbox" class="pk" value="${r.id}" aria-label="Pilih ${esc(r.no)}">`}<div class="grow" style="min-width:0"><div class="sm b">${esc(r.rute)}</div><div class="xs muted">${esc(r.no)} · ${fd(r.tgl)}${r.tgl_bayar ? ' · bayar ' + fd(r.tgl_bayar) : ''}</div></div><div class="num sm b">${rp(r.total)}</div><button class="ib" aria-label="Slip premi" onclick="showDoc('slip','${r.booking_id}','${k}')">${ic('print')}</button></div>`).join('')}</details>`; }).join('') || '<div class="empty">Belum ada premi pada periode ini.<br><small>Premi muncul setelah booking Selesai dan trip & premi dihitung.</small></div>'}
     ${ks.length ? `<div class="sticky-act"><input type="date" id="pm_tgl" value="${todayStr()}" aria-label="Tanggal bayar" style="max-width:160px"><button class="btn primary grow" onclick="payPremi(this)">Tandai dibayar</button></div>` : ''}`
   };
 };
+async function toggleHarga(btn) {
+  const on = btn.getAttribute('aria-checked') !== 'true';
+  btn.setAttribute('aria-checked', on); btn.disabled = true;                      // tampil seketika, dibatalkan bila gagal
+  try {
+    await call('kruViewSave', { value: on ? '1' : '0' }); S.cfg.TAMPIL_HARGA_KRU = on ? '1' : '0';
+    $('#hgDesc').textContent = on ? 'Kru melihat harga sewa di jadwal dan rincian premi.' : 'Harga sewa disembunyikan dari kru.';
+    toast(on ? 'Harga sewa ditampilkan ke kru' : 'Harga sewa disembunyikan dari kru');
+  } catch (e) { btn.setAttribute('aria-checked', !on); toast(e.message, true); }
+  finally { btn.disabled = false; }
+}
 function payPremi(btn) {
   const ids = $$('.pk:checked').map(c => c.value); if (!ids.length) return toast('Centang premi yang akan ditandai dibayar.', true);
   act(btn, async () => { await call('premiPay', { ids: ids, tgl: val('pm_tgl') }); toast(ids.length + ' premi dibayar'); rerender(); });
@@ -506,7 +533,7 @@ const dd = (label, d, lim) => { if (!d) return ''; const n = dayDiff(todayStr(),
 PAGES.master = async () => {
   const t = S.mt, rows = await call('mList', { table: t, trash: S.trash && isSA() }); S.list = rows;
   const ar = {}; (S.m.armada || []).forEach(a => ar[a.id] = a);
-  const line = r => ({ Armada: [r.plat, `${r.jenis} · ${r.seat} seat · ${r.status}`, dd('KIR', r.tgl_kir, 30) + dd('Pajak', r.tgl_pajak, 30) + dd('Servis', r.tgl_servis, 14)], Kru: [r.nama, `${r.posisi} · ${r.no_hp || '-'}`, dd('SIM', r.tgl_sim, 60)], Pelanggan: [r.nama, `${r.instansi || '-'} · ${r.no_hp || '-'}`, ''], Tarif: [r.rute, `${r.jenis_bus} · ${rp(r.harga)}`, ''], KomponenBiaya: [r.nama, r.jenis, ''], BiayaArmada: [(ar[r.armada_id] || {}).plat || '-', `${fd(r.tanggal)} · ${r.jenis} · ${rp(r.jumlah)}`, ''] }[t]);
+  const line = r => ({ Armada: [r.plat, `${r.jenis} · ${r.seat} seat · ${r.status}`, (batIds(r).length ? `<span class="xs muted">Batangan: ${esc(batNames(r))}</span><br>` : '') + dd('KIR', r.tgl_kir, 30) + dd('Pajak', r.tgl_pajak, 30) + dd('Servis', r.tgl_servis, 14)], Kru: [r.nama, `${r.posisi} · ${r.no_hp || '-'}`, dd('SIM', r.tgl_sim, 60)], Pelanggan: [r.nama, `${r.instansi || '-'} · ${r.no_hp || '-'}`, ''], Tarif: [r.rute, `${r.jenis_bus} · ${rp(r.harga)}`, ''], KomponenBiaya: [r.nama, r.jenis, ''], BiayaArmada: [(ar[r.armada_id] || {}).plat || '-', `${fd(r.tanggal)} · ${r.jenis} · ${rp(r.jumlah)}`, ''] }[t]);
   return {
     html: `<div class="chips">${Object.keys(FORMS).filter(k => k !== 'KomponenPremi').map(k => `<button class="chip ${k === t ? 'on' : ''}" onclick="S.mt='${k}';rerender()">${FORMS[k].t}</button>`).join('')}${isSA() ? `<button class="chip ${S.trash ? 'on' : ''}" onclick="S.trash=!S.trash;rerender()">Terhapus</button>` : ''}</div>
     ${rows.map(r => { const l = line(r); return `<button class="item" onclick="${S.trash ? `restore('${t}','${r.id}')` : `openForm('${t}','${r.id}')`}"><div class="grow"><div class="t">${esc(l[0])}</div><div class="s">${esc(l[1])}</div>${l[2] ? `<div style="margin-top:4px">${l[2]}</div>` : ''}</div>${S.trash ? '<span class="badge b-warn">Pulihkan</span>' : ic('chev')}</button>`; }).join('') || '<div class="empty">Belum ada data.</div>'}
@@ -556,7 +583,7 @@ PAGES.setting = async () => {
   const g = await call('cfgGet'), c = g.cfg, kp = S.m.komPremi, jn = { persen: 'Persen', nominal: 'Nominal', nominal_hari: 'Nominal × hari' };
   return `<div class="card"><h3>Identitas & default</h3>${fld('c_APP_NAME', 'Nama aplikasi / perusahaan', 'text', c.APP_NAME || '')}${fld('c_ALAMAT', 'Alamat (kop dokumen)', 'text', c.ALAMAT || '')}${fld('c_TELP', 'Telepon', 'tel', c.TELP || '')}${fld('c_REKENING', 'Rekening pembayaran (invoice)', 'text', c.REKENING || '')}
   <div class="grid2">${fld('c_PERSEN_SOPIR', 'Default premi sopir (%)', 'number', c.PERSEN_SOPIR || '')}${fld('c_PERSEN_KERNET', 'Default premi kernet (%)', 'number', c.PERSEN_KERNET || '')}</div>
-  ${fld('c_TAMPIL_DASAR_PREMI', 'Tampilkan dasar premi ke kru', 'select', c.TAMPIL_DASAR_PREMI || '0', { opts: [['0', 'Tidak (harga sewa tidak bisa dihitung mundur)'], ['1', 'Ya']] })}<button class="btn primary block" onclick="saveCfg(this)">Simpan pengaturan</button></div>
+  ${fld('c_TAMPIL_DASAR_PREMI', 'Rincian perhitungan premi untuk kru', 'select', c.TAMPIL_DASAR_PREMI || '1', { opts: [['1', 'Tampilkan rincian lengkap (dasar premi, biaya trip, uang jalan)'], ['0', 'Sembunyikan (kru hanya lihat persen, premi, total)']] })}<button class="btn primary block" onclick="saveCfg(this)">Simpan pengaturan</button></div>
   <div class="sec">Komponen premi</div>${kp.map(k => `<button class="item" onclick="openForm('KomponenPremi','${k.id}')"><div class="grow"><div class="t">${esc(k.nama)}</div><div class="s">${jn[k.jenis_nilai]} · sopir ${k.nilai_default_sopir} · kernet ${k.nilai_default_kernet}</div></div><span class="badge ${k.status === 'Aktif' ? 'b-ok' : 'b-S'}">${esc(k.status)}</span></button>`).join('')}
   <button class="btn block" onclick="openForm('KomponenPremi','')">${ic('plus')} Tambah komponen premi</button>
   <div class="sec">Penyimpanan</div><div class="card"><div class="kv"><span>ID Spreadsheet</span><span class="xs" style="word-break:break-all">${esc(g.ssId)}</span></div><div class="kv"><span>ID Folder Drive</span><span class="xs" style="word-break:break-all">${esc(g.folderId)}</span></div></div>`;
@@ -570,14 +597,28 @@ PAGES.kjadwal = async p => {
   const f = { next: x => x.a > t && x.st !== 'Selesai', now: x => x.a <= t && x.z >= t && x.st !== 'Selesai' || x.st === 'Berjalan', hist: x => x.st === 'Selesai' || x.z < t }, ordered = l.filter(f[seg]);
   if (seg === 'hist') ordered.reverse();
   return `<div class="seg">${[['next', 'Mendatang'], ['now', 'Berjalan'], ['hist', 'Riwayat']].map(s => `<button class="${seg === s[0] ? 'on' : ''}" onclick="setP({seg:'${s[0]}'})">${s[1]}</button>`).join('')}</div>` +
-    (ordered.map(x => `<div class="card"><div class="row sp"><b>${esc(x.rute)}</b>${badge(x.st)}</div><div class="kv"><span>Tanggal</span><span>${fd(x.a)} – ${fd(x.z)}</span></div><div class="kv"><span>Jemput</span><span>${esc(x.titik_jemput || '-')} · ${esc(x.jam || '-')}</span></div><div class="kv"><span>Bus</span><span>${esc(x.plat)} <small class="muted">${esc(x.jenis)}</small></span></div><div class="kv"><span>Penumpang</span><span>${esc(x.pax)} orang · ${esc(x.pel)}</span></div><div class="kv"><span>Posisi saya</span><span>${esc(x.posisi)}</span></div>${x.catatan ? `<div class="kv"><span>Catatan</span><span>${esc(x.catatan)}</span></div>` : ''}</div>`).join('') || '<div class="empty">Tidak ada trip.</div>');
+    (ordered.map(x => `<div class="card"><div class="row sp"><b>${esc(x.rute)}</b>${badge(x.st)}</div><div class="kv"><span>Tanggal</span><span>${fd(x.a)} – ${fd(x.z)}</span></div><div class="kv"><span>Jemput</span><span>${esc(x.titik_jemput || '-')} · ${esc(x.jam || '-')}</span></div><div class="kv"><span>Bus</span><span>${esc(x.plat)} <small class="muted">${esc(x.jenis)}</small></span></div><div class="kv"><span>Penumpang</span><span>${esc(x.pax)} orang · ${esc(x.pel)}</span></div>${x.harga != null ? `<div class="kv"><span>Harga sewa</span><span class="num b">${rp(x.harga)}</span></div>` : ''}<div class="kv"><span>Posisi saya</span><span>${esc(x.posisi)}</span></div>${x.catatan ? `<div class="kv"><span>Catatan</span><span>${esc(x.catatan)}</span></div>` : ''}</div>`).join('') || '<div class="empty">Tidak ada trip.</div>');
 };
+function calcHtml(x) {
+  const c = x.calc, hg = x.harga != null ? `<div class="kv"><span>Harga sewa trip</span><span class="num b">${rp(x.harga)}</span></div>` : '';
+  if (!c) return hg + `<div class="kv"><span>Premi ${x.persen}%</span><span class="num">${rp(x.premi)}</span></div>${x.det.map(d => `<div class="kv"><span>${esc(d.nama)}</span><span class="num">${rp(d.jumlah)}</span></div>`).join('')}<div class="kv"><span class="b">Total pendapatan</span><span class="num b">${rp(x.total)}</span></div>`;
+  return `<div class="sec" style="margin-top:6px">1. Dasar premi</div>${hg}
+  <div class="kv"><span>Uang jalan diterima${c.tgl_uang_jalan ? ' <small>(' + fd(c.tgl_uang_jalan) + ')</small>' : ''}</span><span class="num">${rp(c.uang_jalan)}</span></div>
+  ${c.biaya.map(b => `<div class="kv"><span>– ${esc(b.nama)}${b.liter > 0 && b.hpl > 0 ? ` <small>(${b.liter} L × ${rp(b.hpl)})</small>` : ''}</span><span class="num">${rp(b.jumlah)}</span></div>`).join('')}
+  <div class="kv"><span>Total realisasi biaya</span><span class="num">${rp(c.total_biaya)}</span></div>
+  <div class="kv"><span>Sisa uang jalan${c.sisa < 0 ? ' <small>(nombok, diganti perusahaan)</small>' : ''}</span><span class="num ${c.sisa < 0 ? 'neg' : ''}">${rp(c.sisa)}</span></div>
+  <div class="kv"><span class="b">Dasar premi</span><span class="num b">${rp(c.dasar)}</span></div>
+  <div class="sec">2. Pendapatan saya (${c.hari} hari)</div>
+  ${c.lines.map(l => `<div style="padding:6px 0;border-bottom:1px dashed var(--border)"><div class="row sp"><span>${esc(l.nama)}</span><b class="num">${rp(l.jumlah)}</b></div><div class="xs muted">${esc(l.rumus)}</div></div>`).join('')}
+  <div class="kv"><span class="b">Total pendapatan</span><span class="num b">${rp(x.total)}</span></div>
+  <div class="xs muted" style="margin-top:6px">Sisa uang jalan = uang jalan − total realisasi biaya.${x.harga != null ? ' Dasar premi = harga sewa − uang jalan + sisa uang jalan.' : ''}</div>`;
+}
 PAGES.kpremi = async () => {
   const l = await call('kruPremi'), g = {};
   l.forEach(x => (g[x.a.slice(0, 7)] = g[x.a.slice(0, 7)] || []).push(x));
   return Object.keys(g).sort().reverse().map(m => { const a = g[m], t = a.reduce((s, x) => s + x.total, 0), b = a.filter(x => x.status !== 'Sudah dibayar').reduce((s, x) => s + x.total, 0);
     return `<div class="sec">${MON[+m.slice(5) - 1]} ${m.slice(0, 4)}</div><div class="grid2" style="margin-bottom:10px">${kpi(a.length + ' trip · total', rp(t))}${kpi('Belum dibayar', rp(b))}</div>` +
-      a.map(x => `<details class="card"><summary style="cursor:pointer;min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:8px"><span><b>${esc(x.rute)}</b><br><small class="muted">${fd(x.a)} · ${esc(x.no)}</small></span><span class="r"><b class="num">${rp(x.total)}</b><br><span class="badge ${x.status === 'Sudah dibayar' ? 'b-ok' : 'b-warn'}">${esc(x.status)}</span></span></summary>${x.dasar != null ? `<div class="kv"><span>Dasar premi</span><span class="num">${rp(x.dasar)}</span></div>` : ''}<div class="kv"><span>Premi ${x.persen}%</span><span class="num">${rp(x.premi)}</span></div>${x.det.map(d => `<div class="kv"><span>${esc(d.nama)}</span><span class="num">${rp(d.jumlah)}</span></div>`).join('')}<div class="kv"><span class="b">Total pendapatan</span><span class="num b">${rp(x.total)}</span></div>${x.tgl_bayar ? `<div class="xs muted">Dibayar ${fd(x.tgl_bayar)}</div>` : ''}</details>`).join(''); }).join('') || '<div class="empty">Belum ada premi. Premi tampil setelah trip selesai dan dihitung.</div>';
+      a.map(x => `<details class="card"><summary style="cursor:pointer;min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:8px"><span><b>${esc(x.rute)}</b><br><small class="muted">${fd(x.a)} · ${esc(x.no)}</small></span><span class="r"><b class="num">${rp(x.total)}</b><br><span class="badge ${x.status === 'Sudah dibayar' ? 'b-ok' : 'b-warn'}">${esc(x.status)}</span></span></summary>${calcHtml(x)}${x.tgl_bayar ? `<div class="xs muted">Dibayar ${fd(x.tgl_bayar)}</div>` : ''}</details>`).join(''); }).join('') || '<div class="empty">Belum ada premi. Premi tampil setelah trip selesai dan dihitung.</div>';
 };
 PAGES.kmore = async () => `<div class="card"><b>${esc(S.user.nama)}</b><div class="muted sm">Akun kru (hanya lihat)</div></div><button class="item" onclick="toggleTheme()">${ic('moon')}<div class="grow t">Mode terang / gelap</div></button><button class="item" onclick="logout()">${ic('out')}<div class="grow t">Keluar</div></button>`;
 
