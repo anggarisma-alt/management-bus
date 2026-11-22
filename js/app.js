@@ -180,11 +180,12 @@ function applyBoot(d) { S.m = d; S.cfg = d.cfg || {}; updateBell(); }
 async function refreshBoot() { applyBoot(await call('boot', {}, { fresh: true })); }
 
 /* ===================== TEMA ===================== */
-function setTheme(t) { document.documentElement.setAttribute('data-theme', t); try { localStorage.setItem('sb_theme', t); } catch (e) { } const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = t === 'dark' ? '#0b1115' : '#0f766e'; }
+function setTheme(t) { document.documentElement.setAttribute('data-theme', t); try { localStorage.setItem('sb_theme', t); } catch (e) { } const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = t === 'dark' ? '#08120e' : '#0e8352'; }
 function toggleTheme() { setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); if (S.token) setHead(S.title, S.back); }
 function initTheme() { let t = null; try { t = localStorage.getItem('sb_theme'); } catch (e) { } if (!t) t = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'; setTheme(t); }
 
 /* ===================== AUTH & SHELL ===================== */
+function togglePw(btn) { const i = $('#lp'), show = i.type === 'password'; i.type = show ? 'text' : 'password'; btn.setAttribute('aria-label', show ? 'Sembunyikan password' : 'Tampilkan password'); }
 async function doLogin(e) {
   e.preventDefault(); const b = $('#lbtn'), er = $('#lerr'); er.hidden = true; b.disabled = true; b.textContent = 'Memproses…';
   try {
@@ -207,9 +208,10 @@ function start() {
   $('#login').hidden = true; $('#app').hidden = false;
   const nav = isAdm() ? NAV_ADM : NAV_KR;
   $('#bnav').innerHTML = nav.map(n => `<button data-p="${n[0]}" onclick="tab('${n[0]}')" aria-label="${n[1]}">${ic(n[2])}<span>${n[1]}</span></button>`).join('');
-  $('#side').innerHTML = `<div class="brand"><i></i>${esc(S.cfg.APP_NAME || 'SiBus')}</div>` + nav.map(n => `<button data-p="${n[0]}" onclick="tab('${n[0]}')">${ic(n[2])}${n[1]}</button>`).join('') +
-    (isAdm() ? [['tagihan', 'Tagihan', 'rcpt'], ['master', 'Master Data', 'db'], ['laporan', 'Laba-Rugi', 'chart'], ['akun', 'Akun', 'users']].concat(isSA() ? [['setting', 'Pengaturan', 'cog'], ['log', 'Log Aktivitas', 'file']] : []).map(n => `<button data-p="${n[0]}" onclick="tab('${n[0]}')">${ic(n[2])}${n[1]}</button>`).join('') : '') +
-    `<div style="flex:1"></div><button onclick="toggleTheme()">${ic('moon')}Ganti tema</button><button onclick="logout()">${ic('out')}Keluar</button>`;
+  const extra = isAdm() ? [['tagihan', 'Tagihan', 'rcpt'], ['master', 'Master Data', 'db'], ['laporan', 'Laba-Rugi', 'chart'], ['akun', 'Akun', 'users']].concat(isSA() ? [['setting', 'Pengaturan', 'cog'], ['log', 'Log Aktivitas', 'file']] : []) : [];
+  $('#side').innerHTML = `<div class="brand"><span class="bt">${ic('bus')}</span><span><b>${esc(S.cfg.APP_NAME || 'SiBus')}</b><small>${isAdm() ? 'Booking & Armada' : 'Portal Kru'}</small></span></div>` +
+    nav.filter(n => n[0] !== 'more' && n[0] !== 'kmore').concat(extra).map(n => `<button data-p="${n[0]}" onclick="tab('${n[0]}')">${ic(n[2])}${n[1]}</button>`).join('') +
+    `<div class="grow"></div><div class="ucard"><span class="av">${esc((S.user.nama || '?').charAt(0).toUpperCase())}</span><span class="ui"><b>${esc(S.user.nama)}</b><small>${esc(S.user.role)}</small></span><button class="ib" aria-label="Keluar" onclick="logout()">${ic('out')}</button></div>`;
   S.depth = 0;
   if (!parseHash().pg) location.replace(hashOf(isAdm() ? 'home' : 'kjadwal', {})); else onRoute();
 }
@@ -269,15 +271,29 @@ function showRem() {
 /* ===================== HALAMAN: BERANDA ===================== */
 const PAGES = {};
 const kpi = (l, v, c) => `<div class="kpi ${c || ''}"><small>${l}</small><b class="num">${v}</b></div>`;
+/** Rupiah ringkas untuk kartu statistik: Rp 142,5 jt. Angka lengkap tetap ada di halaman rincian. */
+function rpc(n) {
+  const a = Math.abs(n), sg = n < 0 ? '-' : '', f = (v, u) => sg + 'Rp\u00a0' + (Math.round(v * 10) / 10).toString().replace('.', ',') + '\u00a0' + u;
+  return a >= 1e9 ? f(a / 1e9, 'M') : a >= 1e6 ? f(a / 1e6, 'jt') : a >= 1e4 ? f(a / 1e3, 'rb') : rp(n);
+}
+const stat = (tone, icon, value, label, full) => `<div class="stat"${full ? ` title="${esc(full)}"` : ''}><span class="tile ${tone}">${ic(icon)}</span><div><b class="num">${value}</b><small>${label}</small></div></div>`;
+function donut(parts, total, label) {
+  const R = 52, C = 2 * Math.PI * R, sum = parts.reduce((a, p) => a + p.v, 0) || 1; let off = 0;
+  const segs = parts.filter(p => p.v > 0).map(p => { const l = p.v / sum * C, e = `<circle cx="66" cy="66" r="${R}" fill="none" style="stroke:${p.c}" stroke-width="16" stroke-dasharray="${l.toFixed(1)} ${(C - l).toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}"/>`; off += l; return e; }).join('');
+  return `<div class="donut"><svg viewBox="0 0 132 132" role="img" aria-label="${esc(parts.map(p => p.n + ' ' + p.v).join(', '))}"><circle cx="66" cy="66" r="${R}" fill="none" style="stroke:var(--card2)" stroke-width="16"/>${segs}</svg><div class="ct"><b>${total}</b><small class="muted xs">${label}</small></div></div>`;
+}
+const salam = () => { const h = new Date().getHours(); return h < 11 ? 'pagi' : h < 15 ? 'siang' : h < 18 ? 'sore' : 'malam'; };
 PAGES.home = async () => {
-  const d = await call('dash'), mx = Math.max(1, ...d.perDay), td = +d.today.slice(8) - 1;
-  return `<p class="muted sm" style="margin:0 2px 10px">Halo, ${esc(S.user.nama)}. Ringkasan bulan ini.</p>
-  <div class="grid3">${kpi('Booking bulan ini', d.bookingBulan)}${kpi('Omzet bulan ini', rp(d.omzet))}${kpi('Sisa tagihan', rp(d.tagihan))}${kpi('Laba bersih', rp(d.laba), 'hl')}</div>
-  <div class="sec">Armada (${d.total} bus)</div>
-  <div class="grid3">${kpi('Tersedia', d.tersedia)}${kpi('Sedang jalan', d.jalan)}${kpi('Servis', d.servis)}${kpi('Utilisasi', d.util + '%')}</div>
-  <div class="cols"><div class="card" style="margin-top:12px"><h3>Bus jalan per hari</h3><div class="bars" role="img" aria-label="Grafik jumlah bus jalan per hari">${d.perDay.map((n, i) => `<i class="${i === td ? 'today' : ''}" style="height:${Math.round(n / mx * 100)}%" title="Tgl ${i + 1}: ${n} bus"></i>`).join('')}</div><div class="axis"><span>1</span><span>${Math.round(d.perDay.length / 2)}</span><span>${d.perDay.length}</span></div><div class="meter" style="margin-top:10px" aria-hidden="true"><i style="width:${d.util}%"></i></div><small class="muted">Utilisasi armada ${d.util}%</small></div>
-  <div class="card" style="margin-top:12px"><h3>5 bus teratas (laba)</h3>${d.top.length ? d.top.map((r, i) => `<div class="kv"><span>${i + 1}. ${esc(r.plat)} <small>(${r.trip} trip)</small></span><span class="${r.laba < 0 ? 'neg' : 'pos'}">${rp(r.laba)}</span></div>`).join('') : '<div class="empty">Belum ada trip selesai bulan ini.</div>'}</div></div>
-  <div class="card"><h3>Insight otomatis</h3>${d.insight.map(t => `<div class="kv" style="display:block">• ${esc(t)}</div>`).join('')}</div>`;
+  const d = await call('dash'), mx = Math.max(1, ...d.perDay), td = +d.today.slice(8) - 1, mxl = Math.max(1, ...d.top.map(r => r.laba));
+  const lain = Math.max(0, d.total - d.tersedia - d.jalan - d.servis);
+  const parts = [{ n: 'Tersedia', v: d.tersedia, c: 'var(--primary)' }, { n: 'Sedang jalan', v: d.jalan, c: 'var(--info)' }, { n: 'Servis', v: d.servis, c: 'var(--warn)' }, { n: 'Nonaktif', v: lain, c: 'var(--s-S)' }];
+  return `<section class="hero"><h2>Selamat ${salam()}, ${esc(S.user.nama)}</h2><p>${d.bookingBulan} booking bulan ini · ${d.jalan} bus sedang jalan · sisa tagihan ${rp(d.tagihan)}.</p><button class="btn white" onclick="go('bform',{})">${ic('plus')} Booking baru</button></section>
+  <div class="stats">${stat('g', 'clip', d.bookingBulan, 'Booking bulan ini')}${stat('b', 'bus', d.tersedia, 'Bus tersedia')}${stat('v', 'wallet', rpc(d.omzet), 'Omzet bulan ini', rp(d.omzet))}${stat('a', 'chart', rpc(d.laba), 'Laba bersih', rp(d.laba))}</div>
+  <div class="stats">${stat('r', 'rcpt', rpc(d.tagihan), 'Sisa tagihan', rp(d.tagihan))}${stat('g', 'bus', d.jalan, 'Bus sedang jalan')}${stat('a', 'cog', d.servis, 'Bus servis')}${stat('b', 'chart', d.util + '%', 'Utilisasi armada')}</div>
+  <div class="cols"><div class="card"><h3>Bus jalan per hari</h3><div class="bars" role="img" aria-label="Grafik jumlah bus jalan per hari">${d.perDay.map((n, i) => `<i class="${i === td ? 'today' : ''}" style="height:${Math.round(n / mx * 100)}%" title="Tgl ${i + 1}: ${n} bus"></i>`).join('')}</div><div class="axis"><span>1</span><span>${Math.round(d.perDay.length / 2)}</span><span>${d.perDay.length}</span></div></div>
+  <div class="card"><h3>Status armada</h3><div class="donutw">${donut(parts, d.total, 'bus')}<div class="dleg">${parts.filter(p => p.v > 0).map(p => `<div><i style="background:${p.c}"></i>${p.n}<b class="num">${p.v}</b></div>`).join('')}</div></div></div></div>
+  <div class="cols"><div class="card"><h3>5 bus teratas (laba bulan ini)</h3>${d.top.length ? d.top.map(r => `<div class="hbar"><span title="${esc(r.plat)}">${esc(r.plat)}</span><span class="tr"><i style="width:${Math.max(3, Math.round(Math.max(0, r.laba) / mxl * 100))}%"></i></span><b class="num ${r.laba < 0 ? 'neg' : ''}">${rp(r.laba)}</b></div>`).join('') : '<div class="empty">Belum ada trip selesai bulan ini.</div>'}</div>
+  <div class="card"><h3>Insight otomatis</h3>${d.insight.map(t => `<div class="kv" style="display:block">• ${esc(t)}</div>`).join('')}</div></div>`;
 };
 
 /* ===================== BOOKING: DAFTAR ===================== */

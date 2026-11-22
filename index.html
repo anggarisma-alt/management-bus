@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0f766e">
+  <meta name="theme-color" content="#0e8352">
   <title>SiBus</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -11,24 +11,41 @@
   <!-- Percepat koneksi pertama ke Google Apps Script -->
   <link rel="preconnect" href="https://script.google.com" crossorigin>
   <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div id="progress" class="progress" aria-hidden="true"></div>
   <div id="net" class="netbar" role="status" hidden>Tidak ada koneksi internet. Data terakhir tetap bisa dilihat.</div>
 
-  <!-- LOGIN -->
+  <!-- LOGIN: panel hijau (kiri) + form (kanan) -->
   <section id="login" class="login" hidden>
-    <form class="login-card" onsubmit="doLogin(event)" autocomplete="on">
-      <div class="logo" aria-hidden="true"></div>
-      <h1>SiBus</h1>
-      <p class="muted">Booking &amp; penjadwalan armada bus pariwisata</p>
-      <div class="f"><label for="lu">Username</label><input id="lu" autocomplete="username" autocapitalize="none" required></div>
-      <div class="f"><label for="lp">Password</label><input id="lp" type="password" autocomplete="current-password" required></div>
-      <div class="err-box" id="lerr" role="alert" hidden></div>
-      <button class="btn primary lg" id="lbtn" type="submit">Masuk</button>
-      <button class="btn ghost" type="button" onclick="toggleTheme()">Ganti tema terang/gelap</button>
-    </form>
+    <div class="lg-hero">
+      <div class="glass"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v6M16 6v6M2 12h19.6M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2s-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/></svg></div>
+      <h1>Booking<br>&amp; Armada Bus</h1>
+      <p>Jadwal bus, kru, dan premi pariwisata dalam satu tempat: rapi, cepat, bebas bentrok.</p>
+      <div class="lg-feat">
+        <div><span class="glass"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>Jadwal 50 armada bebas bentrok</div>
+        <div><span class="glass"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg></span>Premi kru dihitung otomatis</div>
+        <div><span class="glass"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg></span>Laba tiap bus terpantau</div>
+      </div>
+      <div class="lg-foot">SiBus · Manajemen armada bus pariwisata</div>
+    </div>
+    <div class="lg-form">
+      <form onsubmit="doLogin(event)" autocomplete="on">
+        <div class="brand-tile"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v6M16 6v6M2 12h19.6M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2s-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/></svg></div>
+        <h2>Selamat datang</h2>
+        <p class="muted" style="margin:0 0 16px">Masuk dengan akun SiBus Anda.</p>
+        <div class="f"><label for="lu">Username</label><input id="lu" autocomplete="username" autocapitalize="none" required></div>
+        <div class="f"><label for="lp">Password</label><div class="pw"><input id="lp" type="password" autocomplete="current-password" required><button type="button" aria-label="Tampilkan password" onclick="togglePw(this)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div>
+        <div class="err-box" id="lerr" role="alert" hidden></div>
+        <button class="btn primary lg" id="lbtn" type="submit">Masuk</button>
+        <p class="muted xs c" style="margin:12px 0 0">Lupa password? Hubungi admin.</p>
+        <button class="btn ghost login-theme" type="button" onclick="toggleTheme()">Ganti tema terang/gelap</button>
+      </form>
+    </div>
   </section>
 
   <!-- APLIKASI (SPA: konten dirender oleh router hash di app.js) -->
